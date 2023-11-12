@@ -6,22 +6,101 @@ import csv
 import matplotlib.pyplot as plt
 from sklearn.ensemble import IsolationForest
 import numpy as np
+from datetime import datetime
 
-while True:
-    df = pd.read_csv('data.csv')
+# Identify the correct port
+ports = list_ports.comports()
+for port in ports: 
+    print(port)
 
-    # Choose the columns we want to apply the detection on
-    anomaly_inputs = ['Heart Rate', 'SC']
+# Open the serial com
+serialCom = serial.Serial('COM5', 9600)
 
-    # The model
-    model_IF = IsolationForest(contamination=0.1, random_state=42)
-    model_IF.fit(df[anomaly_inputs])
+# Toggle DTR to reset the Arduino
+# serialCom.setDTR(False)
+# time.sleep(1)
+# serialCom.flushInput()
+# serialCom.setDTR(True)
 
-    # Defining what the model will be looking at (our columns)
-    df['anomaly_scores'] = model_IF.decision_function(df[anomaly_inputs])
-    df['anomaly'] = model_IF.predict(df[anomaly_inputs])
-    df.loc[:, ['Heart Rate', 'SC', 'anomaly_scores', 'anomaly']]
-    print(df.head())
+# Function to train the model
+def train_model(data):
+    model = IsolationForest(contamination=0.1, random_state=42)
+    model.fit(data[['BPM', 'GSR']])
+    return model
+
+with open("try.csv", "a", newline='') as f:  # Use "a" mode for appending
+    writer = csv.writer(f, delimiter=",")
+
+    # Initial training with initial data
+    initial_data = pd.read_csv('try.csv')
+
+    # Loop through and collect data as it is available
+    while True:
+        try:
+            # Read the line
+            s_bytes = serialCom.readline()
+            decoded_bytes = s_bytes.decode("utf-8").strip('\r\n')
+
+            # Check if the data line contains two elements (BPM and GSR)
+            if ',' in decoded_bytes:
+                # Get the current date and time
+                current_dnt = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+                # Parse the line
+                bpm, gsr = decoded_bytes.split(',')
+
+                # Create the row
+                row = [current_dnt, bpm, gsr]
+                # print(row)
+
+                # Write to CSV
+                writer.writerow(row)
+                f.flush()
+
+                # Read the updated data
+                updated_data = pd.read_csv('try.csv')
+                
+                model_IF = train_model(updated_data)
+
+                # Process only the latest row
+                latest_row = updated_data.iloc[-1:]
+
+                anomaly_score = model_IF.decision_function(latest_row[['BPM', 'GSR']])
+                is_anomaly = model_IF.predict(latest_row[['BPM', 'GSR']])
+
+                # Print the anomaly information for the latest row
+                print(f"Latest Data: {latest_row}")
+                print(f"Anomaly Score: {anomaly_score}, Is Anomaly: {is_anomaly}")
+
+                # Wait for some time before checking for new data
+                time.sleep(1)  # Adjust the sleep time as needed
+
+        except Exception as e:
+            print(e)
+
+
+# # Loop for real-time processing
+# while True:
+#     try:
+#         # Read the updated data
+#         updated_data = pd.read_csv('try.csv')
+
+#         # Process only the latest row
+#         latest_row = updated_data.iloc[-1:]
+
+#         if 'BPM' in latest_row.columns and 'GSR' in latest_row.columns:
+#             anomaly_score = model_IF.decision_function(latest_row[['BPM', 'GSR']])
+#             is_anomaly = model_IF.predict(latest_row[['BPM', 'GSR']])
+
+#             # Print the anomaly information for the latest row
+#             print(f"Latest Data: {latest_row}")
+#             print(f"Anomaly Score: {anomaly_score}, Is Anomaly: {is_anomaly}")
+
+#         # Wait for some time before checking for new data
+#         time.sleep(1)  # Adjust the sleep time as needed
+
+#     except Exception as e:
+#         print(f"An error occurred: {e}")
 
 # Plotting the data
 # def outlier_plot(data, outlier_method_name, x_var, y_var, xaxis_limits=[0,1], yaxis_limits=[0,1]):
