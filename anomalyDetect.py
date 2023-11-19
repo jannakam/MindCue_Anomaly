@@ -5,8 +5,10 @@ import time
 import csv
 import matplotlib.pyplot as plt
 from sklearn.ensemble import IsolationForest
+from sklearn.impute import IterativeImputer
 import numpy as np
 from datetime import datetime
+from sendData import *
 
 # Identify the correct port
 ports = list_ports.comports()
@@ -27,6 +29,10 @@ def train_model(data):
     model = IsolationForest(contamination=0.1, random_state=42)
     model.fit(data[['BPM', 'GSR']])
     return model
+
+def impute_missing_values(data):
+    imputer = IterativeImputer(random_state=42)
+    return pd.DataFrame(imputer.fit_transform(data[['BPM', 'GSR']]), columns=data.columns)
 
 with open("try.csv", "a", newline='') as f:  # Use "a" mode for appending
     writer = csv.writer(f, delimiter=",")
@@ -59,14 +65,18 @@ with open("try.csv", "a", newline='') as f:  # Use "a" mode for appending
 
                 # Read the updated data
                 updated_data = pd.read_csv('try.csv')
-                
-                model_IF = train_model(updated_data)
+                model_Impute = impute_missing_values(updated_data)
+                model_IF = train_model(model_Impute)
 
                 # Process only the latest row
                 latest_row = updated_data.iloc[-1:]
 
                 anomaly_score = model_IF.decision_function(latest_row[['BPM', 'GSR']])
                 is_anomaly = model_IF.predict(latest_row[['BPM', 'GSR']])
+
+                # Update the latest anomaly result
+                latest_anomaly_result["anomaly_score"] = anomaly_score.tolist()  # Convert numpy array to list
+                latest_anomaly_result["is_anomaly"] = is_anomaly.tolist()
 
                 # Print the anomaly information for the latest row
                 print(f"Latest Data: {latest_row}")
