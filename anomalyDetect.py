@@ -96,19 +96,18 @@ with open("try.csv", "a", newline='') as f:  # Use "a" mode for appending
 
                 # Read the updated data
                 updated_data = pd.read_csv('try.csv')
-                latest_row = updated_data.iloc[-1:]
-                #To compare affect of imputing
-                print(f'Data before imputing {latest_row}')
+                                
+                # To compare affect of imputing
+                # print(f'Data before imputing {latest_row}')
 
                 imputed_bpm = impute_missing_values(updated_data)
                 # updated_data['BPM'] = imputed_bpm['BPM']
                 updated_data.to_csv('try.csv', index=False)
 
-                # Process only the latest row
-                latest_row = updated_data.iloc[-1:]
-
                 model_IF = train_model(updated_data[['BPM', 'GSR']])
 
+                # Process only the latest row
+                latest_row = updated_data.iloc[-1:]
                 anomaly_score = model_IF.decision_function(latest_row[['BPM', 'GSR']])
                 is_anomaly = model_IF.predict(latest_row[['BPM', 'GSR']])
 
@@ -116,9 +115,16 @@ with open("try.csv", "a", newline='') as f:  # Use "a" mode for appending
                 # latest_anomaly_result["anomaly_score"] = anomaly_score.tolist()  # Convert numpy array to list
                 # latest_anomaly_result["is_anomaly"] = is_anomaly.tolist()
 
+
+                # Update the latest row with anomaly information
+                updated_data.at[updated_data.index[-1], 'Anomaly_Score'] = anomaly_score
+                updated_data.at[updated_data.index[-1], 'Is_Anomaly'] = is_anomaly
+
+                updated_data.to_csv('try.csv', index=False)
+                f.flush()
+
                 # Print the anomaly information for the latest row
                 print(f"Latest Data: {latest_row}")
-                print(f"Anomaly Score: {anomaly_score}, Is Anomaly: {is_anomaly}")
 
                 # Wait for some time before checking for new data
                 time.sleep(1)  # Adjust the sleep time as needed
