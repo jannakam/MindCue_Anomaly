@@ -10,7 +10,8 @@ from sklearn.impute import IterativeImputer
 from sklearn.impute import SimpleImputer
 import numpy as np
 from datetime import datetime
-from sendData import *
+import socketio
+
 
 # Identify the correct port
 ports = list_ports.comports()
@@ -19,6 +20,10 @@ for port in ports:
 
 # Open the serial com
 serialCom = serial.Serial('COM5', 9600)
+
+# Setup a SocketIO client
+sio = socketio.Client()
+sio.connect('http://localhost:9000')
 
 # Toggle DTR to reset the Arduino
 # serialCom.setDTR(False)
@@ -32,23 +37,9 @@ def train_model(data):
     model.fit(data[['BPM', 'GSR']])
     return model
 
+# function to impute missing BPM values
 def impute_missing_values(dataframe):
 
-    # bpm_data.loc[:, 'BPM'] = pd.to_numeric(bpm_data['BPM'], errors='coerce')
-
-    # # Replace BPM values less than 60 with NaN, if there are any valid BPM values
-    # if bpm_data['BPM'].notna().any():
-    #     bpm_data.loc[bpm_data['BPM'] < 60, 'BPM'] = 0
-    # else:
-    #     print("No valid BPM values available for imputation.")
-
-    # # Initialize the SimpleImputer
-    # imputer = SimpleImputer(missing_values=0, strategy='mean')
-
-    # # Impute the missing (now NaN) values
-    # imputed_bpm = imputer.fit_transform(bpm_data.values.reshape(-1, 1)).flatten()
-    # return imputed_bpm
-    # Convert 'BPM' to numeric, setting non-numeric as NaN
     dataframe['BPM'] = pd.to_numeric(dataframe['BPM'], errors='coerce')
 
     # Check if all values are NaN or less than 60
@@ -63,6 +54,8 @@ def impute_missing_values(dataframe):
         dataframe['BPM'] = imputer.fit_transform(dataframe[['BPM']]).flatten()
     else:
         print("No valid BPM values available for imputation.")
+
+
 
 
 with open("try.csv", "a", newline='') as f:  # Use "a" mode for appending
@@ -122,6 +115,13 @@ with open("try.csv", "a", newline='') as f:  # Use "a" mode for appending
 
                 updated_data.to_csv('try.csv', index=False)
                 f.flush()
+
+                # Send the data to Flask server
+                try:
+                    sio.emit('anomaly_data', {'is_anomaly': is_anomaly.tolist()})
+                except Exception as e:
+                    print("Error sending data to Flask server:", e)
+
 
                 # Print the anomaly information for the latest row
                 print(f"Latest Data: {latest_row}")
