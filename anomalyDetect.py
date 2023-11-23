@@ -119,6 +119,7 @@ with open("try.csv", "a", newline='') as f:  # Use "a" mode for appending
                 # Send the data to Flask server
                 try:
                     sio.emit('anomaly_data', {'is_anomaly': is_anomaly.tolist()})
+                                              #'Timestamp': current_dnt.tolist()})
                 except Exception as e:
                     print("Error sending data to Flask server:", e)
 
