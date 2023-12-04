@@ -96,30 +96,33 @@ with open("try.csv", "a", newline='') as f:  # Use "a" mode for appending
                 imputed_bpm = impute_missing_values(updated_data)
                 # updated_data['BPM'] = imputed_bpm['BPM']
                 updated_data.to_csv('try.csv', index=False)
+                last_row_number = len(updated_data) - 1
 
-                model_IF = train_model(updated_data[['BPM', 'GSR']])
+                # Retrain the model on non-anomalous rows if more than 5 rows
+                if len(updated_data) > 10:
+                    updated_data = updated_data[updated_data['Is_Anomaly'] != -1]  # Assuming -1 indicates anomalous
+                    model_IF = train_model(updated_data[['BPM', 'GSR']])
+                else:
+                    model_IF = train_model(updated_data[['BPM', 'GSR']])
+
+                # model_IF = train_model(updated_data[['BPM', 'GSR']])
 
                 # Process only the latest row
                 latest_row = updated_data.iloc[-1:]
                 anomaly_score = model_IF.decision_function(latest_row[['BPM', 'GSR']])
                 is_anomaly = model_IF.predict(latest_row[['BPM', 'GSR']])
 
-                # Update the latest anomaly result (THIS IS WHAT FATMA NEEDS IN THE EXTENSION)
-                # latest_anomaly_result["anomaly_score"] = anomaly_score.tolist()  # Convert numpy array to list
-                # latest_anomaly_result["is_anomaly"] = is_anomaly.tolist()
-
-
-                # Update the latest row with anomaly information
+                # # Update the latest row with anomaly information
                 updated_data.at[updated_data.index[-1], 'Anomaly_Score'] = anomaly_score
                 updated_data.at[updated_data.index[-1], 'Is_Anomaly'] = is_anomaly
-
+                
                 updated_data.to_csv('try.csv', index=False)
                 f.flush()
 
                 # Send the data to Flask server
                 try:
-                    sio.emit('anomaly_data', {'is_anomaly': is_anomaly.tolist()})
-                                              #'Timestamp': current_dnt.tolist()})
+                    sio.emit('anomaly_data', is_anomaly.tolist())
+                                            
                 except Exception as e:
                     print("Error sending data to Flask server:", e)
 
