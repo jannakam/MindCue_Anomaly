@@ -111,10 +111,10 @@ with open("new.csv", "a", newline='') as f:  # Use "a" mode for appending
                 last_row_number = len(updated_data) - 1
 
                 # Retrain the model on non-anomalous rows if more than 5 rows
-                if len(updated_data) > 5:
+                if len(updated_data) > 30:
                     # Split the data so that anomalies are only removed after 30 rows
-                    first_5_rows = updated_data.iloc[:5]
-                    rows_after_5 = updated_data.iloc[5:]
+                    first_5_rows = updated_data.iloc[:30]
+                    rows_after_5 = updated_data.iloc[30:]
 
                     # Filter out anomalous rows from rows after the 30th
                     rows_after_5 = rows_after_5[rows_after_5['Is_Anomaly'] != -1]  # Assuming -1 indicates anomalous

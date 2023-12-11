@@ -22,8 +22,8 @@ for port in ports:
 serialCom = serial.Serial('COM5', 9600)
 
 # Setup a SocketIO client
-# sio = socketio.Client()
-# sio.connect('http://localhost:9000')
+sio = socketio.Client()
+sio.connect('http://localhost:9000')
 
 # Toggle DTR to reset the Arduino
 # serialCom.setDTR(False)
@@ -128,11 +128,11 @@ with open("Janna.csv", "a", newline='') as f:  # Use "a" mode for appending
                 f.flush()
 
                 # Send the data to Flask server
-                # try:
-                #     sio.emit('anomaly_data', is_anomaly.tolist())
+                try:
+                    sio.emit('anomaly_data', is_anomaly.tolist())
                                             
-                # except Exception as e:
-                #     print("Error sending data to Flask server:", e)
+                except Exception as e:
+                    print("Error sending data to Flask server:", e)
 
 
                 # Print the anomaly information for the latest row
