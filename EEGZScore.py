@@ -15,6 +15,15 @@ def apply_filters(data, num_channels, sampling_rate):
         DataFilter.perform_bandstop(filtered_data[channel], sampling_rate, 50.0, 60.0, 4, FilterTypes.BUTTERWORTH.value, 0)
     return filtered_data
 
+def detect_anomalies(data, threshold=2, anomaly_threshold=0.1):
+    """
+    Detects anomalies in 2D data array based on Z-score.
+    Returns -1 if the percentage of anomalous data exceeds anomaly_threshold, otherwise returns 1.
+    """
+    z_scores = np.abs((data - np.mean(data, axis=1, keepdims=True)) / np.std(data, axis=1, keepdims=True))
+    anomalies = np.where(z_scores > threshold, 1, 0)
+    anomaly_percentage = np.mean(anomalies, axis=1)
+    return -1 if np.any(anomaly_percentage > anomaly_threshold) else 1
 
 def main():
     BoardShim.enable_dev_board_logger()
@@ -35,7 +44,10 @@ def main():
 
 
     try:
+        data_buffer = np.array([]).reshape(len(eeg_channels), 0)
+        start_time = time.time()
         while True:
+            current_time = time.time()
             data = board.get_current_board_data(max_samples)
             if data.size > 0:
                 # Select only the EEG channels
@@ -43,6 +55,20 @@ def main():
 
                 # Apply filters to the EEG data
                 filtered_eeg_data = apply_filters(eeg_data, len(eeg_channels), sampling_rate)
+
+                # Accumulate data for 2 seconds
+                data_buffer = np.append(data_buffer, filtered_eeg_data, axis=1)
+                if current_time - start_time >= 2:
+                    # Process accumulated data
+                    selected_channels = [eeg_names.index(ch) for ch in ['C3', 'C4', 'F1', 'F2']]
+                    anomaly_result = detect_anomalies(data_buffer[selected_channels])
+                    
+                    # Return or store the anomaly result here
+                    print(anomaly_result)
+
+                    # Clear buffer and reset timer
+                    data_buffer = np.array([]).reshape(len(eeg_channels), 0)
+                    start_time = time.time()
 
                 # Append EEG data to CSV file
                 DataFilter.write_file(filtered_eeg_data, 'test.csv', 'a')

@@ -1,9 +1,3 @@
-# How to use this file:
-# It trains the model on the first 5 rows of data
-# It doesn't send these first 5 rows to the server (in case there are anomalies)
-# Dont put finger on the pulse sensor properly while its training
-# When you want anomalies, put finger on the pulse sensor properly (after 5 rows)
-# Remove finger again to show non anomalous data
 import pandas as pd
 from serial.tools import list_ports
 import serial
@@ -17,15 +11,9 @@ from sklearn.impute import SimpleImputer
 import numpy as np
 from datetime import datetime
 import socketio
+import tkinter as tk
+import pandas as pd
 
-
-csv_file_path = 'new.csv'
-csv_header = ['Timestamp', 'BPM', 'GSR', 'Anomaly_Score', 'Is_Anomaly']
-
-# Open the CSV file in write mode to reset it and write only the header
-with open(csv_file_path, 'w', newline='') as file:
-    writer = csv.writer(file)
-    writer.writerow(csv_header)
 
 # Identify the correct port
 ports = list_ports.comports()
@@ -52,29 +40,35 @@ def train_model(data):
     return model
 
 # function to impute missing BPM values
-def impute_missing_values(dataframe):
+def impute_missing_values(dataframe, start_row):
 
     dataframe['BPM'] = pd.to_numeric(dataframe['BPM'], errors='coerce')
 
-    # Check if all values are NaN or less than 60
-    if dataframe['BPM'].notna().any() and (dataframe['BPM'] >= 60).any():
-        # Replace BPM values less than 60 with NaN
-        dataframe.loc[dataframe['BPM'] < 60, 'BPM'] = np.nan
-
-        # Initialize the SimpleImputer
-        imputer = SimpleImputer(missing_values=np.nan, strategy='mean')
-
-        # Impute the missing (now NaN) values
-        dataframe['BPM'] = imputer.fit_transform(dataframe[['BPM']]).flatten()
+    # Apply imputation only to rows after the specified start_row
+    if start_row < len(dataframe):
+        subset = dataframe.iloc[start_row:]
+        
+        if subset['BPM'].notna().any() and (subset['BPM'] >= 60).any():
+            subset.loc[subset['BPM'] < 60, 'BPM'] = np.nan
+            imputer = SimpleImputer(missing_values=np.nan, strategy='mean')
+            subset['BPM'] = imputer.fit_transform(subset[['BPM']]).flatten()
+            
+            # Update the original dataframe
+            dataframe.iloc[start_row:] = subset
     else:
-        print("No valid BPM values available for imputation.")
+        print("No rows available for imputation after specified start row.")
+
+with open("newfile.csv", "w", newline='') as f:
+    writer = csv.writer(f, delimiter=",")
+    # Write the header row
+    writer.writerow(['Timestamp', 'BPM', 'GSR', 'Anomaly_Score', 'Is_Anomaly'])
 
 
-with open("new.csv", "a", newline='') as f:  # Use "a" mode for appending
+with open("newfile.csv", "a", newline='') as f:  # Use "a" mode for appending
     writer = csv.writer(f, delimiter=",")
 
     # Initial training with initial data
-    initial_data = pd.read_csv('new.csv')
+    initial_data = pd.read_csv('newfile.csv')
 
     # Loop through and collect data as it is available
     while True:
@@ -100,27 +94,27 @@ with open("new.csv", "a", newline='') as f:  # Use "a" mode for appending
                 f.flush()
 
                 # Read the updated data
-                updated_data = pd.read_csv('new.csv')
+                updated_data = pd.read_csv('newfile.csv')
                                 
                 # To compare affect of imputing
                 # print(f'Data before imputing {latest_row}')
 
-                imputed_bpm = impute_missing_values(updated_data)
+                imputed_bpm = impute_missing_values(updated_data, 10)
                 # updated_data['BPM'] = imputed_bpm['BPM']
-                updated_data.to_csv('new.csv', index=False)
+                updated_data.to_csv('newfile.csv', index=False)
                 last_row_number = len(updated_data) - 1
 
                 # Retrain the model on non-anomalous rows if more than 5 rows
-                if len(updated_data) > 30:
+                if len(updated_data) > 10:
                     # Split the data so that anomalies are only removed after 30 rows
-                    first_5_rows = updated_data.iloc[:30]
-                    rows_after_5 = updated_data.iloc[30:]
+                    first_30_rows = updated_data.iloc[:10]
+                    rows_after_30 = updated_data.iloc[10:]
 
                     # Filter out anomalous rows from rows after the 30th
-                    rows_after_5 = rows_after_5[rows_after_5['Is_Anomaly'] != -1]  # Assuming -1 indicates anomalous
+                    rows_after_30 = rows_after_30[rows_after_30['Is_Anomaly'] != -1]  # Assuming -1 indicates anomalous
 
                     # Concatenate the two parts
-                    updated_data = pd.concat([first_5_rows, rows_after_5], ignore_index=True)
+                    updated_data = pd.concat([first_30_rows, rows_after_30], ignore_index=True)
 
                     model_IF = train_model(updated_data[['BPM', 'GSR']])
                 else:
@@ -137,16 +131,15 @@ with open("new.csv", "a", newline='') as f:  # Use "a" mode for appending
                 updated_data.at[updated_data.index[-1], 'Anomaly_Score'] = anomaly_score
                 updated_data.at[updated_data.index[-1], 'Is_Anomaly'] = is_anomaly
                 
-                updated_data.to_csv('new.csv', index=False)
+                updated_data.to_csv('newfile.csv', index=False)
                 f.flush()
 
                 # Send the data to Flask server
-                if len(updated_data) > 5:
-                    try:
-                        sio.emit('anomaly_data', is_anomaly.tolist())
-                                                
-                    except Exception as e:
-                        print("Error sending data to Flask server:", e)
+                try:
+                    sio.emit('anomaly_data', is_anomaly.tolist())
+                                            
+                except Exception as e:
+                    print("Error sending data to Flask server:", e)
 
 
                 # Print the anomaly information for the latest row
@@ -157,3 +150,4 @@ with open("new.csv", "a", newline='') as f:  # Use "a" mode for appending
 
         except Exception as e:
             print(e)
+

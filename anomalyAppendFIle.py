@@ -38,22 +38,23 @@ def train_model(data):
     return model
 
 # function to impute missing BPM values
-def impute_missing_values(dataframe):
+def impute_missing_values(dataframe, start_row):
 
     dataframe['BPM'] = pd.to_numeric(dataframe['BPM'], errors='coerce')
 
-    # Check if all values are NaN or less than 60
-    if dataframe['BPM'].notna().any() and (dataframe['BPM'] >= 60).any():
-        # Replace BPM values less than 60 with NaN
-        dataframe.loc[dataframe['BPM'] < 60, 'BPM'] = np.nan
-
-        # Initialize the SimpleImputer
-        imputer = SimpleImputer(missing_values=np.nan, strategy='mean')
-
-        # Impute the missing (now NaN) values
-        dataframe['BPM'] = imputer.fit_transform(dataframe[['BPM']]).flatten()
+    # Apply imputation only to rows after the specified start_row
+    if start_row < len(dataframe):
+        subset = dataframe.iloc[start_row:]
+        
+        if subset['BPM'].notna().any() and (subset['BPM'] >= 60).any():
+            subset.loc[subset['BPM'] < 60, 'BPM'] = np.nan
+            imputer = SimpleImputer(missing_values=np.nan, strategy='mean')
+            subset['BPM'] = imputer.fit_transform(subset[['BPM']]).flatten()
+            
+            # Update the original dataframe
+            dataframe.iloc[start_row:] = subset
     else:
-        print("No valid BPM values available for imputation.")
+        print("No rows available for imputation after specified start row.")
 
 
 
@@ -92,16 +93,16 @@ with open("Janna.csv", "a", newline='') as f:  # Use "a" mode for appending
                 # To compare affect of imputing
                 # print(f'Data before imputing {latest_row}')
 
-                imputed_bpm = impute_missing_values(updated_data)
+                imputed_bpm = impute_missing_values(updated_data, 10)
                 # updated_data['BPM'] = imputed_bpm['BPM']
                 updated_data.to_csv('Janna.csv', index=False)
                 last_row_number = len(updated_data) - 1
 
                 # Retrain the model on non-anomalous rows if more than 5 rows
-                if len(updated_data) > 30:
+                if len(updated_data) > 10:
                     # Split the data so that anomalies are only removed after 30 rows
-                    first_30_rows = updated_data.iloc[:30]
-                    rows_after_30 = updated_data.iloc[30:]
+                    first_30_rows = updated_data.iloc[:10]
+                    rows_after_30 = updated_data.iloc[10:]
 
                     # Filter out anomalous rows from rows after the 30th
                     rows_after_30 = rows_after_30[rows_after_30['Is_Anomaly'] != -1]  # Assuming -1 indicates anomalous
