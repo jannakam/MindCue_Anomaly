@@ -12,6 +12,7 @@ import numpy as np
 from datetime import datetime
 import socketio
 
+pd.options.mode.chained_assignment = None
 
 # Identify the correct port
 ports = list_ports.comports()

@@ -14,6 +14,7 @@ import socketio
 import tkinter as tk
 import pandas as pd
 
+pd.options.mode.chained_assignment = None
 
 # Identify the correct port
 ports = list_ports.comports()
@@ -70,9 +71,12 @@ with open("newfile.csv", "a", newline='') as f:  # Use "a" mode for appending
     # Initial training with initial data
     initial_data = pd.read_csv('newfile.csv')
 
+    last_time = time.time()
+    data_buffer = []
     # Loop through and collect data as it is available
     while True:
         try:
+            
             # Read the line
             s_bytes = serialCom.readline()
             decoded_bytes = s_bytes.decode("utf-8").strip('\r\n')
@@ -146,7 +150,7 @@ with open("newfile.csv", "a", newline='') as f:  # Use "a" mode for appending
                 print(f"Latest Data: {latest_row}")
 
                 # Wait for some time before checking for new data
-                time.sleep(1)  # Adjust the sleep time as needed
+                time.sleep(0.1)  # Adjust the sleep time as needed
 
         except Exception as e:
             print(e)

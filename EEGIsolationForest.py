@@ -27,7 +27,7 @@ def create_isolation_forest(data):
     model.fit(data)
     return model
 
-def detect_anomalies_with_ml(model, data, anomaly_threshold=0.3):
+def detect_anomalies_with_ml(model, data, anomaly_threshold=0.4):
     """
     Detects anomalies using the Isolation Forest model.
     Aggregates predictions over the data and returns a single value:
@@ -40,12 +40,6 @@ def detect_anomalies_with_ml(model, data, anomaly_threshold=0.3):
     return -1 if anomaly_proportion > anomaly_threshold else 1
 
 def main():
-
-    # Open the serial com
-    serialCom = serial.Serial('COM5', 9600)
-    # Setup a SocketIO client
-    sio = socketio.Client()
-    sio.connect('http://localhost:9000')
 
     BoardShim.enable_dev_board_logger()
 
@@ -113,15 +107,9 @@ def main():
                 # Append EEG data to CSV file
                 DataFilter.write_file(filtered_eeg_data, 'test.csv', 'a')
 
-                # Send the data to Flask server
-                try:
-                    sio.emit('eeg_anomaly', anomaly_result.tolist())
-                                            
-                except Exception as e:
-                    print("Error sending data to Flask server:", e)
 
             time.sleep(1)
-            
+
     except KeyboardInterrupt:
         print("Stream stopped by the user.")
         board.stop_stream()
