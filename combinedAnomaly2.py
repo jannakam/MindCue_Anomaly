@@ -129,7 +129,7 @@ def main():
         writer = csv.writer(f, delimiter=",")
         selected_eeg_names = ['C3', 'C4', 'F1', 'F2']  # The EEG channels you're interested in
         EEG_names = ','.join([name for name in eeg_names if name in selected_eeg_names])
-        sensor_names = ['Timestamp', 'BPM', 'GSR', EEG_names, 'Anomaly_Score', 'Is_Anomaly']
+        sensor_names = ['Timestamp', 'BPM', 'GSR', EEG_names, 'Anomaly_Score', 'Is_Anomaly_BPMGSR', 'Is_Anomaly_EEG', 'Is_Anomaly']
 
         # Write the header row
         f.write(','.join(sensor_names) + '\n')
@@ -220,18 +220,21 @@ def main():
 
                 # Process only the latest row
                 latest_row = updated_data.iloc[-1:]
-                eeg_anomaly = eeg_model.predict(latest_row[['C3', 'C4', 'F1', 'F2']])
-                gsr_anomaly = gsr_model.predict(latest_row[['BPM','GSR']])
+                Is_Anomaly_BPMGSR = eeg_model.predict(latest_row[['C3', 'C4', 'F1', 'F2']])
+                Is_Anomaly_EEG = gsr_model.predict(latest_row[['BPM','GSR']])
 
                 eeg_score = eeg_model.decision_function(latest_row[['C3', 'C4', 'F1', 'F2']])
                 gsr_score = gsr_model.decision_function(latest_row[['BPM','GSR']])
 
                 anomaly_score = (eeg_score + gsr_score) / 2
-                is_anomaly = -1 if (eeg_anomaly == -1 and gsr_anomaly == -1) else 1
+                is_anomaly = -1 if (Is_Anomaly_BPMGSR == -1 or Is_Anomaly_EEG == -1) else 1
 
                 # # Update the latest row with anomaly information
                 updated_data.at[updated_data.index[-1], 'Anomaly_Score'] = anomaly_score
+                updated_data.at[updated_data.index[-1], 'Is_Anomaly_BPMGSR'] = Is_Anomaly_BPMGSR
+                updated_data.at[updated_data.index[-1], 'Is_Anomaly_EEG'] = Is_Anomaly_EEG
                 updated_data.at[updated_data.index[-1], 'Is_Anomaly'] = is_anomaly
+
                 
                 updated_data.to_csv('newfile.csv', index=False)
                 f.flush()
