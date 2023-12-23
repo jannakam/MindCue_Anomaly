@@ -109,6 +109,7 @@ def main():
     board = BoardShim(BoardIds.SYNTHETIC_BOARD.value, params)
     board_descr = BoardShim.get_board_descr(BoardIds.SYNTHETIC_BOARD.value)
     eeg_names = board_descr['eeg_names'].split(',')
+    # print("EEG channel names:", eeg_names)
 
     board.prepare_session()
     board.start_stream()
@@ -116,13 +117,23 @@ def main():
 
     sampling_rate = BoardShim.get_sampling_rate(BoardIds.SYNTHETIC_BOARD.value)
     eeg_channels = BoardShim.get_eeg_channels(BoardIds.SYNTHETIC_BOARD.value)
-    max_samples = 1
+    # print(eeg_channels)
+    # max_samples = 1
 
     start_time = time.time()
     selected_eeg_names = ['C3', 'C4', 'F1', 'F2']  # The EEG channels you're interested in
     # Select only the EEG channels you're interested in
+
+    # print("EEG channel names:", eeg_names)
+    if not all(name in eeg_names for name in selected_eeg_names):
+        print("Error: Selected EEG names do not match available channels.")
+        return
+
     selected_channel_indices = [eeg_names.index(ch) for ch in selected_eeg_names]
-    data_buffer = np.array([]).reshape(len(selected_channel_indices), 0)
+    # print("Selected EEG channel indices:", selected_channel_indices)
+
+    # selected_channel_indices = [eeg_names.index(ch) for ch in selected_eeg_names]
+    # data_buffer = np.array([]).reshape(len(selected_channel_indices), 0)
 
     # Create a new CSV file
     with open("newfile.csv", "w", newline='') as f:
@@ -134,6 +145,8 @@ def main():
         # Write the header row
         f.write(','.join(sensor_names) + '\n')
 
+    eeg_data_buffer = []
+
     with open("newfile.csv", "a", newline='') as f:  # Use "a" mode for appending
         writer = csv.writer(f, delimiter=",")
 
@@ -141,54 +154,98 @@ def main():
         initial_data = pd.read_csv('newfile.csv')
         time.sleep(15)
 
-        # Loop through and collect data as it is available
         while True:
             try:
-                # Read the line
+                # Read the line from serial and EEG data
                 s_bytes = serialCom.readline()
                 decoded_bytes = s_bytes.decode("utf-8").strip('\r\n')
 
-                # Check if the data line contains two elements (BPM and GSR)
-                if ',' in decoded_bytes:
-
-                    # Parse the line
-                    bpm, gsr = decoded_bytes.split(',')
-
-
-                # Get the current date and time
-                current_dnt = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                current_time = time.time()
+                # EEG Data Collection
+                max_samples = 256  # Set this based on your requirement
                 data = board.get_current_board_data(max_samples)
-
                 if data.size > 0:
-                    eeg_data = data[eeg_channels, :]
-                    selected_eeg_data = eeg_data[selected_channel_indices, :]
+                    eeg_data = data[selected_channel_indices, :]
+                    # selected_eeg_data = eeg_data[selected_channel_indices, :]
+                    filtered_eeg_data = apply_filters(eeg_data, len(selected_channel_indices), sampling_rate)
+                    eeg_data_buffer.append(filtered_eeg_data)
 
-                    filtered_eeg_data = apply_filters(selected_eeg_data, len(selected_channel_indices), sampling_rate)
+                # Check if new Pulse and GSR data is available
+                if ',' in decoded_bytes:
+                    # Calculate average EEG data from the buffer
+                    if eeg_data_buffer:
+                        average_eeg_data = np.mean(np.vstack(eeg_data_buffer), axis=1)
+                        print(average_eeg_data)
+                        eeg_data_buffer = []  # Reset the buffer
+                    else:
+                        average_eeg_data = np.zeros(len(selected_channel_indices))
 
-                    # Append the filtered data to the data buffer
-                    if data_buffer.shape[1] == 0:  # If data_buffer is empty
-                        data_buffer = np.empty((len(selected_channel_indices), 0))
+                    # Parse the Pulse and GSR data
+                    bpm, gsr = decoded_bytes.split(',')
+                    current_dnt = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-                    data_buffer = np.append(data_buffer, filtered_eeg_data, axis=1)
+                    # Check if average_eeg_data has exactly 4 values
+                    if len(average_eeg_data) == 4:
+                        c3, c4, f1, f2 = average_eeg_data.tolist()
+                    else:
+                        print("Error: The number of EEG data points is not 4, received:", len(average_eeg_data))
+                        continue
 
-                    # Keep only the latest max_samples data points in the data buffer
-                    if data_buffer.shape[1] > max_samples:
-                        data_buffer = data_buffer[:, -max_samples:]
+                    # Create the row with the required EEG values
+                    row = [current_dnt, bpm, gsr, c3, c4, f1, f2]
 
-                    if current_time - start_time >= 15:
-                        # Flatten the data buffer for CSV writing
-                        flattened_eeg_data = data_buffer.flatten().tolist()
-                        data_buffer = np.empty((len(selected_channel_indices), 0))  # Reset data_buffer
-                        start_time = time.time()
+                    # Write to CSV
+                    writer.writerow(row)
+                    f.flush()
 
 
-                # Create the row
-                row = [current_dnt, bpm, gsr] + flattened_eeg_data
+        # # Loop through and collect data as it is available
+        # while True:
+        #     try:
+        #         # Read the line
+        #         s_bytes = serialCom.readline()
+        #         decoded_bytes = s_bytes.decode("utf-8").strip('\r\n')
 
-                # Write to CSV
-                writer.writerow(row)
-                f.flush()
+        #         # Check if the data line contains two elements (BPM and GSR)
+        #         if ',' in decoded_bytes:
+
+        #             # Parse the line
+        #             bpm, gsr = decoded_bytes.split(',')
+
+
+        #         # Get the current date and time
+        #         current_dnt = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        #         current_time = time.time()
+        #         data = board.get_current_board_data(max_samples)
+
+        #         if data.size > 0:
+        #             eeg_data = data[eeg_channels, :]
+        #             selected_eeg_data = eeg_data[selected_channel_indices, :]
+
+        #             filtered_eeg_data = apply_filters(selected_eeg_data, len(selected_channel_indices), sampling_rate)
+
+        #             # Append the filtered data to the data buffer
+        #             if data_buffer.shape[1] == 0:  # If data_buffer is empty
+        #                 data_buffer = np.empty((len(selected_channel_indices), 0))
+
+        #             data_buffer = np.append(data_buffer, filtered_eeg_data, axis=1)
+
+        #             # Keep only the latest max_samples data points in the data buffer
+        #             if data_buffer.shape[1] > max_samples:
+        #                 data_buffer = data_buffer[:, -max_samples:]
+
+        #             if current_time - start_time >= 15:
+        #                 # Flatten the data buffer for CSV writing
+        #                 flattened_eeg_data = data_buffer.flatten().tolist()
+        #                 data_buffer = np.empty((len(selected_channel_indices), 0))  # Reset data_buffer
+        #                 start_time = time.time()
+
+
+                # # Create the row
+                # row = [current_dnt, bpm, gsr] + flattened_eeg_data
+
+                # # Write to CSV
+                # writer.writerow(row)
+                # f.flush()
 
                 # Read the updated data
                 updated_data = pd.read_csv('newfile.csv')
@@ -203,15 +260,16 @@ def main():
                     # Split the data so that anomalies are only removed after 30 rows
                     first_10_rows = updated_data.iloc[:10]
                     rows_after_10 = updated_data.iloc[10:]
+                    non_anomalous_rows = rows_after_10[rows_after_10['Is_Anomaly'] != -1]
 
                     # Filter out anomalous rows from rows after the 30th
-                    rows_after_10 = rows_after_10[rows_after_10['Is_Anomaly'] != -1]  # Assuming -1 indicates anomalous
+                    # rows_after_10 = rows_after_10[rows_after_10['Is_Anomaly'] != -1]  # Assuming -1 indicates anomalous
 
                     # Concatenate the two parts
-                    updated_data = pd.concat([first_10_rows, rows_after_10], ignore_index=True)
+                    training_data = pd.concat([first_10_rows, non_anomalous_rows], ignore_index=True)
 
-                    eeg_model = train_eeg_model(updated_data[['C3', 'C4', 'F1', 'F2']])
-                    gsr_model = train_gsr_model(updated_data[['BPM','GSR']])
+                    eeg_model = train_eeg_model(training_data[['C3', 'C4', 'F1', 'F2']])
+                    gsr_model = train_gsr_model(training_data[['BPM','GSR']])
                 else:
                     eeg_model = train_eeg_model(updated_data[['C3', 'C4', 'F1', 'F2']])
                     gsr_model = train_gsr_model(updated_data[['BPM','GSR']])
@@ -220,8 +278,8 @@ def main():
 
                 # Process only the latest row
                 latest_row = updated_data.iloc[-1:]
-                Is_Anomaly_BPMGSR = eeg_model.predict(latest_row[['C3', 'C4', 'F1', 'F2']])
-                Is_Anomaly_EEG = gsr_model.predict(latest_row[['BPM','GSR']])
+                Is_Anomaly_EEG = eeg_model.predict(latest_row[['C3', 'C4', 'F1', 'F2']])
+                Is_Anomaly_BPMGSR = gsr_model.predict(latest_row[['BPM','GSR']])
 
                 eeg_score = eeg_model.decision_function(latest_row[['C3', 'C4', 'F1', 'F2']])
                 gsr_score = gsr_model.decision_function(latest_row[['BPM','GSR']])
